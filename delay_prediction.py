@@ -87,9 +87,8 @@ def make_entry(i):
     res.extend(orig[i])
     res.extend(dest[i])
     res.extend(date[i])
-    res.append(delays[i])
 
-    return np.array(res, dtype=np.float32)
+    return np.array(res, dtype=np.float32), delays[i]
 
 
 pprint(carriers)
