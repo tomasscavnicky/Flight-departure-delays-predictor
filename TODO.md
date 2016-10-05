@@ -1,0 +1,2 @@
+- 52M entries == ~1.5GB mem
+- on-line training => cannot use one-hot for carriers
