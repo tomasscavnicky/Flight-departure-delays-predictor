@@ -6,6 +6,9 @@ import numpy as np
 from pprint import pprint
 import csv
 from datetime import datetime
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import Dropout
 
 apts_fname = 'airports.csv'
 in_fname = 'delays_dataset.csv'
@@ -59,14 +62,16 @@ with open(in_fname) as data_file:
             delay = int( (actdep - schdep).total_seconds() / 60 )
 
             carriers_id[i] = carrier
-            flight_numbers[i] = int(row['fltno'])
+            flight_numbers[i] = int(row['flight_number'])
             orig[i] = airport2gps[row['dep_apt']]
             dest[i] = airport2gps[row['arr_apt']]
             date[i] = schdep.month, schdep.day, schdep.isoweekday(), schdep.hour * 60 + schdep.minute
             delays[i] = delay
             i += 1
 
-        except Exception:
+        except KeyError:
+            pass
+        except ValueError:
             pass
 
 print('Error count:', linecount - i)
@@ -77,20 +82,39 @@ n_carriers = len(carriers_set)
 del carriers_set
 
 def make_entry(i):
-    carrier_idx = carrier_id_to_idx[carriers_id[i]]
+    # carrier_idx = carrier_id_to_idx[carriers_id[i]]
     # one-hot carrier
-    res = [0] * n_carriers
-    res[carrier_idx] = 1
+    # res = [0] * n_carriers
+    # res[carrier_idx] = 1
     # rest of data
+    res = [carrier_id_to_idx[carriers_id[i]]]
     res.append(flight_numbers[i])
     res.extend(orig[i])
     res.extend(dest[i])
     res.extend(date[i])
 
-    return np.array(res, dtype=np.float32), delays[i]  # float err !
+    return np.array(res, dtype=np.float32)  # float err !
 
+X = np.ndarray((linecount, 9), dtype=np.float32)
 
 for i in range(10):
     e,d = make_entry(i)
     print(i+1, e[n_carriers:])
+
+for i in xrange(linecount):
+    X[i] = make_entry(i)
+
+del carriers_id
+del flight_numbers
+del orig
+del dest
+del date
+del delays
+
+print('building model ...')
+model = Sequential()
+print('\tdense layer')
+model.add(Dense(9, 1, activation='sigmoid'))
+print('\tmodel compilation')
+model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
