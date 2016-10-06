@@ -1,26 +1,18 @@
 #!/usr/bin/python2
 
 from __future__ import print_function
-import sys
-import numpy as np
-from pprint import pprint
+
 import csv
+import numpy as np
+
+from pprint import pprint
 from datetime import datetime
+from collections import defaultdict
+
 
 apts_fname = 'airports.csv'
-in_fname = 'delays_dataset.csv'
+in_fname = 'delays_dataset_clean.csv'
 datefmt = '%Y-%m-%d %H:%M:%S'
-
-
-airport2gps = {}
-with open(apts_fname) as apts_csvfile:
-    reader = csv.reader(apts_csvfile)
-    for row in reader:
-        a_code = row[4]
-        if a_code:
-            latitude, longitude = float(row[6]), float(row[7])
-            airport2gps[a_code] = latitude, longitude
-
 
 
 linecount = 0
@@ -33,64 +25,84 @@ linecount = 10000
 # linecount = int( 1.02 * (filesize / avg line len) )
 
 
-carriers_id = np.chararray(linecount, 3)
-flight_numbers = np.zeros(linecount, dtype=np.uint16)
-orig = np.ndarray((linecount, 2), dtype=np.float32)
-dest = np.ndarray((linecount, 2), dtype=np.float32)
-date = np.ndarray((linecount, 4), dtype=np.int16)
-delays = np.zeros(linecount, dtype=np.int16)
-
-carriers_set = set()
-counter = 0
-
-with open(in_fname) as data_file:
-    reader = csv.DictReader(data_file)
-    i = 0
+airport2gps = {}
+with open(apts_fname) as apts_csvfile:
+    reader = csv.reader(apts_csvfile)
     for row in reader:
-        if i == linecount:
-            break
-        try:
-            carrier = row['carrier']
-            carriers_set.add(carrier)
+        a_code = row[4]
+        if a_code:
+            latitude, longitude = float(row[6]), float(row[7])
+            airport2gps[a_code] = latitude, longitude
+
+
+class Counter(defaultdict):
+
+    def __init__(self, *args, **kwargs):
+        self.i = 0
+
+    def __missing__(self, key):
+        val = self[key] = self.i
+        self.i += 1
+        return val
+
+
+class CsvReader:
+
+    def __init__(self, csv_fname, batchsize=None):
+        self.f = open(csv_fname)
+
+        if batchsize is None:
+            linecount = 0
+            for linecount,_ in enumerate(self.f):
+                pass
+            batchsize = linecount
+        
+        self.batch = np.ndarray((batchsize, 10), dtype=np.float32)
+
+
+    def __iter__(self):
+        self.csvit = csv.DictReader(self.f)
+        self.carriers = Counter()
+        return self
+
+
+    def next(self):
+        b = self.batch
+        b[:] = 0
+
+        for i in xrange(len(b)):
+            try:
+                row = next(self.csvit)
+            except StopIteration:
+                if i == 0:
+                    raise
+                break
+
+            cidx  = self.carriers[row['carrier']]
+            fltno = int(row['flight_number'])
+            orig  = airport2gps[row['dep_apt']]
+            dest  = airport2gps[row['arr_apt']]
 
             schdep = datetime.strptime(row['scheduled_departure'], datefmt)
             actdep = datetime.strptime(row['actual_departure'],    datefmt)
+            date   = schdep.month, schdep.day, schdep.isoweekday(), schdep.hour * 60 + schdep.minute
+            delay  = int( (actdep - schdep).total_seconds() / 60 )
 
-            delay = int( (actdep - schdep).total_seconds() / 60 )
+            entry = [cidx, fltno]
+            entry.extend(orig)
+            entry.extend(dest)
+            entry.extend(date)
+            b[i] = entry
 
-            carriers_id[i] = carrier
-            flight_numbers[i] = int(row['fltno'])
-            orig[i] = airport2gps[row['dep_apt']]
-            dest[i] = airport2gps[row['arr_apt']]
-            date[i] = schdep.month, schdep.day, schdep.isoweekday(), schdep.hour * 60 + schdep.minute
-            delays[i] = delay
-            i += 1
-
-        except Exception:
-            pass
-
-print('Error count:', linecount - i)
+        return b[:i+1]
 
 
-carrier_id_to_idx = {cid:idx for idx,cid in enumerate(carriers_set)}
-n_carriers = len(carriers_set)
-del carriers_set
+if __name__=='__main__':
 
-def make_entry(i):
-    carrier_idx = carrier_id_to_idx[carriers_id[i]]
-    # one-hot carrier
-    res = [0] * n_carriers
-    res[carrier_idx] = 1
-    # rest of data
-    res.append(flight_numbers[i])
-    res.extend(orig[i])
-    res.extend(dest[i])
-    res.extend(date[i])
-
-    return np.array(res, dtype=np.float32), delays[i]  # float err !
+    it = CsvReader(in_fname, 100000)
+    for b in it:
+        print(b)
+        raw_input()
 
 
-for i in range(10):
-    e,d = make_entry(i)
-    print(i+1, e[n_carriers:])
 
