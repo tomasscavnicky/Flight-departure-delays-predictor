@@ -11,7 +11,7 @@ from keras.layers import Dense
 from keras.layers import Dropout
 
 apts_fname = 'airports.csv'
-in_fname = 'delays_dataset.csv'
+in_fname = '../dataset_clean.csv'
 datefmt = '%Y-%m-%d %H:%M:%S'
 
 
@@ -95,11 +95,11 @@ def make_entry(i):
 
     return np.array(res, dtype=np.float32)  # float err !
 
-X = np.ndarray((linecount, 9), dtype=np.float32)
+X = np.ndarray((linecount, 10), dtype=np.float32)
 
 for i in range(10):
-    e,d = make_entry(i)
-    print(i+1, e[n_carriers:])
+    e = make_entry(i)
+    print(i+1, e)
 
 for i in xrange(linecount):
     X[i] = make_entry(i)
@@ -114,7 +114,7 @@ del delays
 print('building model ...')
 model = Sequential()
 print('\tdense layer')
-model.add(Dense(9, 1, activation='sigmoid'))
+model.add(Dense(1, input_dim=10,activation='sigmoid'))
 print('\tmodel compilation')
 model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
