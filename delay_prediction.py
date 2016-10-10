@@ -9,15 +9,6 @@ import numpy as np
 from pprint import pprint
 from datetime import datetime
 from collections import defaultdict
-
-from keras.layers import Dense
-from keras.models import Sequential
-from keras.layers import Dropout
-from keras.regularizers import l2, activity_l2
-from keras.callbacks import Callback
-from keras.callbacks import TensorBoard
-from keras.callbacks import EarlyStopping
-import keras.backend as k
 from random import shuffle
 
 in_fname = sys.argv[1] if len(sys.argv) > 1 else 'data/delays_dataset_clean.csv'
@@ -119,59 +110,106 @@ class CsvReader:
         return b[:i], t[:i]
 
 
-class decay_lr(Callback):
-    ''' 
-        n_epoch = no. of epochs after decay should happen.
-        decay = decay value
-    '''  
-    def __init__(self, n_epoch, decay):
-        super(decay_lr, self).__init__()
-        self.n_epoch=n_epoch
-        self.decay=decay
-
-    def on_epoch_begin(self, epoch, logs={}):
-        old_lr = self.model.optimizer.lr.get_value()
-        if epoch > 1 and epoch%self.n_epoch == 0 :
-            new_lr= self.decay*old_lr
-            k.set_value(self.model.optimizer.lr, new_lr)
-        else:
-            k.set_value(self.model.optimizer.lr, old_lr)
-
-
 if __name__=='__main__':
-    num_epochs = 20
+    num_epochs = 15
     batchsize = 64
+    mode = 'svr'
+    sgn_predict = False
+
     it = CsvReader(in_fname, batchsize=1000000)
     data = next(iter(it))
     X, y = data
 
+    if sgn_predict:
+        for i in xrange(len(y)):
+            y[i] = 1 if y[i] > 0 else -1
 
     train_X = X[:0.9*len(X)]
     train_Y = y[:0.9*len(y)]
     test_X = X[0.9*len(X):]
     test_Y = y[0.9*len(y):]
 
-    model = Sequential()
-    model.add(Dense(input_dim=len(train_X[0]), output_dim=100))   # , W_regularizer=l2(0.01), activity_regularizer=activity_l2(0.01)
-    # model.add(Dropout(0.2))
-    model.add(Dense(100))
-    model.add(Dense(1))                                     # , W_regularizer=l2(0.01), activity_regularizer=activity_l2(0.01)
-    # sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
-    tb_callback = TensorBoard(log_dir='./logs/logs_1', histogram_freq=0, write_graph=True)
-    early_stop = EarlyStopping(monitor='val_loss', patience=0, verbose=0, mode='auto')
-    model.compile(optimizer='adagrad', loss='mean_absolute_error') #mean_absolute_error
-    print('\nmodel summary:')
-    print(model.summary())
-
-    model.fit(train_X, train_Y, batchsize, num_epochs, verbose=1, shuffle=True, callbacks=[tb_callback, early_stop])
-
     rand_indices = range(len(test_X))
     shuffle(rand_indices)
     rand_indices = rand_indices[:100]
-    for i in rand_indices:
-        print(test_X)
-        result = model.predict([test_X[i]], verbose=1)
-        print('expected:', test_Y[i])
-        print('predicted:', result)
+
+    if mode == 'ff_nn':
+        from keras.layers import Dense
+        from keras.models import Sequential
+        from keras.layers import Dropout
+        from keras.regularizers import l2, activity_l2
+        from keras.callbacks import Callback
+        from keras.callbacks import TensorBoard
+        from keras.callbacks import EarlyStopping
+        import keras.backend as k
+
+        model = Sequential()
+        model.add(Dense(input_dim=len(train_X[0]), output_dim=100))   # , W_regularizer=l2(0.01), activity_regularizer=activity_l2(0.01)
+        # model.add(Dropout(0.2))
+        model.add(Dense(100))
+        model.add(Dense(1))                                     # , W_regularizer=l2(0.01), activity_regularizer=activity_l2(0.01)
+        # sgd = SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
+        tb_callback = TensorBoard(log_dir='./logs/logs_1', histogram_freq=0, write_graph=True)
+        early_stop = EarlyStopping(monitor='val_loss', patience=0, verbose=0, mode='auto')
+        model.compile(optimizer='adagrad', loss='mean_absolute_percentage_error') #mean_absolute_error
+        print('\nmodel summary:')
+        print(model.summary())
+
+        model.fit(train_X, train_Y, batchsize, num_epochs, verbose=1, shuffle=True) # , callbacks=[tb_callback, early_stop]
+
+        for i in rand_indices:
+            test_data = test_X[i:i+1]
+            print(test_data)
+            result = model.predict(test_data, batch_size=1, verbose=1)
+            print('expected:', test_Y[i])
+            print('predicted:', result)
+            print('\n')
+    elif mode == 'lin_regr':
+        from sklearn.linear_model import LinearRegression
+
+        regr = LinearRegression()
+        regr.fit(train_X, train_Y)
+
+        print('Coefficients: \n', regr.coef_)
+        # The mean squared error
+        print("Mean squared error: %.2f"
+              % np.mean((regr.predict(test_X) - test_Y) ** 2))
+        # Explained variance score: 1 is perfect prediction
+        print('Variance score: %.2f' % regr.score(test_X, test_Y))
+
+        for i in rand_indices:
+            test_data = test_X[i:i+1]
+            print(test_data)
+            result = regr.predict(test_data)
+            print('expected:', test_Y[i])
+            print('predicted:', result)
+            print('\n')
+
+    elif mode == 'svr':
+        from sklearn.svm import SVR
+        svr_rbf = SVR(kernel='rbf', C=1e3, gamma=0.1)
+        svr_lin = SVR(kernel='linear', C=1e3)
+        svr_poly = SVR(kernel='poly', C=1e3, degree=2)
+
+        print('training svr rbf ...')
+        svr_rbf.fit(train_X, train_Y)
+        # svr_lin.fit(train_X, train_Y)
+        # svr_poly.fit(train_X, train_Y)
+
+
+        for i in rand_indices:
+            test_data = test_X[i:i+1]
+            print(test_data)
+            result_rbf = svr_rbf.predict(test_data)
+            # result_lin = svr_lin.predict(test_data)
+            # result_poly = svr_poly.predict(test_data)
+
+            print('expected:', test_Y[i])
+            print('predicted rbf:', result_rbf)
+            # print('predicted lin:', result_lin)
+            # print('predicted poly:', result_poly)
+            print('\n')
+        
+
 
 
