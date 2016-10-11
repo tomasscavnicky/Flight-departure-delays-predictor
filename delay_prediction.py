@@ -113,10 +113,10 @@ class CsvReader:
 if __name__=='__main__':
     num_epochs = 15
     batchsize = 64
-    mode = 'svr'
+    mode = 'gbr'
     sgn_predict = False
 
-    it = CsvReader(in_fname, batchsize=1000000)
+    it = CsvReader(in_fname, batchsize=2000000)
     data = next(iter(it))
     X, y = data
 
@@ -185,8 +185,13 @@ if __name__=='__main__':
             print('predicted:', result)
             print('\n')
 
+    elif mode == 'log_regr':
+        from sklearn.linear_model import LogisticRegression
+
+
     elif mode == 'svr':
         from sklearn.svm import SVR
+
         svr_rbf = SVR(kernel='rbf', C=1e3, gamma=0.1)
         svr_lin = SVR(kernel='linear', C=1e3)
         svr_poly = SVR(kernel='poly', C=1e3, degree=2)
@@ -209,7 +214,23 @@ if __name__=='__main__':
             # print('predicted lin:', result_lin)
             # print('predicted poly:', result_poly)
             print('\n')
-        
 
+    elif mode == 'gbr':
+        from sklearn.ensemble import GradientBoostingRegressor
+        from sklearn.metrics import mean_squared_error
+        np.random.seed(1)
+        # n.trees=500, verbose=F, shrinkage=0.01, distribution="bernoulli", 
+        #              interaction.depth=3, n.minobsinnode=30
+
+        params = {'n_estimators': 500, 'max_depth': 4, 'min_samples_split': 2,
+          'learning_rate': 0.01, 'loss': 'ls'}
+        gbr = GradientBoostingRegressor(**params)
+
+        print('training GradientBoostingRegressor ...')
+        gbr.fit(train_X, train_Y)
+
+        mse = mean_squared_error(test_Y, gbr.predict(test_X))
+
+        print("MSE: %.4f" % mse)
 
 
