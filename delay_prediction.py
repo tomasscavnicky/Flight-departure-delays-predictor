@@ -9,7 +9,7 @@ import numpy as np
 from pprint import pprint
 from datetime import datetime
 from collections import defaultdict
-from random import shuffle
+from random import shuffle as shuffle
 
 in_fname = sys.argv[1] if len(sys.argv) > 1 else 'data/delays_dataset_clean.csv'
 apts_fname = 'data/airports.csv'
@@ -113,16 +113,22 @@ class CsvReader:
 if __name__=='__main__':
     num_epochs = 15
     batchsize = 64
-    mode = 'gbr'
+    mode = 'xgb'
     sgn_predict = False
 
-    it = CsvReader(in_fname, batchsize=2000000)
+    it = CsvReader(in_fname, batchsize=1000000)
     data = next(iter(it))
     X, y = data
 
     if sgn_predict:
         for i in xrange(len(y)):
             y[i] = 1 if y[i] > 0 else -1
+
+    print('shuffling data ...')
+    indices = np.arange(len(y))
+    np.random.shuffle(indices)
+    X = X[indices]
+    y = y[indices]
 
     train_X = X[:0.9*len(X)]
     train_Y = y[:0.9*len(y)]
@@ -217,7 +223,7 @@ if __name__=='__main__':
 
     elif mode == 'gbr':
         from sklearn.ensemble import GradientBoostingRegressor
-        from sklearn.metrics import mean_squared_error
+        from sklearn.metrics import mean_absolute_error
         np.random.seed(1)
         # n.trees=500, verbose=F, shrinkage=0.01, distribution="bernoulli", 
         #              interaction.depth=3, n.minobsinnode=30
@@ -229,8 +235,31 @@ if __name__=='__main__':
         print('training GradientBoostingRegressor ...')
         gbr.fit(train_X, train_Y)
 
-        mse = mean_squared_error(test_Y, gbr.predict(test_X))
+        mse = mean_absolute_error(test_Y, gbr.predict(test_X))
 
-        print("MSE: %.4f" % mse)
+        print("MAE: %.4f" % mse)
+
+    elif mode == 'xgb':
+        import xgboost as xgb
+
+        dtrain = xgb.DMatrix(train_X, label=train_Y)
+        dtest =  xgb.DMatrix(test_X, label=test_Y)
+
+        param = {'bst:max_depth':5, 'bst:eta':1, 'objective':'reg:linear' }
+        num_round = 1000
+        bst = xgb.train(param, dtrain, num_round)
+        for i in rand_indices:
+            test_data = test_X[i:i+1]
+            print(test_data)
+            dtest = xgb.DMatrix(test_data)
+            result_rbf = bst.predict(dtest)
+            # result_lin = svr_lin.predict(test_data)
+            # result_poly = svr_poly.predict(test_data)
+
+            print('expected:', test_Y[i])
+            print('predicted rbf:', result_rbf)
+            # print('predicted lin:', result_lin)
+            # print('predicted poly:', result_poly)
+            print('\n')
 
 
